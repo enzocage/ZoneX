@@ -52,6 +52,13 @@ drama_sound = pygame.mixer.Sound("drama.mp3")
 matt_sound = pygame.mixer.Sound("matt.mp3")
 explosion_sound = pygame.mixer.Sound("explosion.mp3")
 
+# Versuche, den Kollisionssound zu laden, falls vorhanden
+try:
+    collision_sound = pygame.mixer.Sound("collision.mp3")
+except FileNotFoundError:
+    print("Warnung: collision.mp3 nicht gefunden. Verwende move_sound für Kollisionen.")
+    collision_sound = move_sound  # Verwende move_sound als Fallback
+
 # Aktueller Sound
 aktueller_sound = None
 
@@ -196,9 +203,9 @@ def zeige_level_start():
     bildschirm.blit(tonne_bild, (tonne[0], tonne[1]))
 
     # Level-Anzeige mit 30% Transparenz
-    schrift = pygame.font.Font(None, 72)
+    schrift = pygame.font.Font(None, 73)
     level_text = schrift.render(f"Level {aktuelles_level}", True, WEISS)
-    level_text.set_alpha(int(255 * 0.7))  # 70% Deckkraft = 30% Transparenz
+    level_text.set_alpha(int(255 * 0.3))  # 70% Deckkraft = 30% Transparenz
     text_rect = level_text.get_rect(center=(breite // 2, hoehe // 2))
     bildschirm.blit(level_text, text_rect)
 
@@ -274,14 +281,18 @@ def zeichne_spielelemente():
     if tonne:
         bildschirm.blit(tonne_bild, (tonne[0], tonne[1]))
 
+    # Plutonium zeichnen
     if plutonium:
         bildschirm.blit(plutonium_bild, (plutonium[0], plutonium[1]))
 
+    # Matten zeichnen
     for matte in matten:
         bildschirm.blit(matte_bild, (matte[0], matte[1]))
 
+    # Spieler zeichnen
     bildschirm.blit(spieler_bild, (spieler_x, spieler_y))
 
+    # Informationen anzeigen
     schrift = pygame.font.Font(None, 36)
     info_texte = [
         f"Level: {aktuelles_level}",
@@ -296,9 +307,17 @@ def zeichne_spielelemente():
         info_surface = schrift.render(text, True, WEISS)
         bildschirm.blit(info_surface, (10, 10 + i * 40))
 
+# Funktion zum Generieren einer zufälligen Position
+def generiere_position(besetzte_positionen):
+    while True:
+        x = random.randint(0, (breite - raster_groesse) // raster_groesse) * raster_groesse
+        y = random.randint(0, (hoehe - raster_groesse) // raster_groesse) * raster_groesse
+        if (x, y) not in besetzte_positionen:
+            return (x, y)
+
 # Lade das Cover-Bild
 cover_bild = pygame.image.load("cover.jpg")
-cover_bild = pygame.transform.scale(cover_bild, (BREITE, HOEHE))
+cover_bild = pygame.transform.scale(cover_bild, (breite, hoehe))
 
 # Funktion zum Anzeigen des Cover-Bildes
 def zeige_cover():
@@ -314,7 +333,7 @@ level_neustart()
 
 # Farbanimation für Gegner
 farb_offset = 0
-farb_geschwindigkeit = 0.1
+farb_geschwindigkeit = 0.1  # Erhöhen Sie diesen Wert für eine schnellere Animation
 
 # Funktion zur Generierung der aktuellen Farbe
 def get_regenbogen_farbe(offset):
@@ -336,19 +355,20 @@ def umkehrrichtung(richtung):
 def platziere_matte(x, y, richtung):
     global verfuegbare_matten
     if verfuegbare_matten > 0:
-        spieler_raster_x = x // RASTER_GROESSE
-        spieler_raster_y = y // RASTER_GROESSE
+        # Berechne die Position der Matte basierend auf der aktuellen Position des Spielers
+        spieler_raster_x = x // raster_groesse
+        spieler_raster_y = y // raster_groesse
 
         if richtung == "rechts":
-            matte_pos = ((spieler_raster_x - 1) * RASTER_GROESSE, spieler_raster_y * RASTER_GROESSE)
+            matte_pos = ((spieler_raster_x - 1) * raster_groesse, spieler_raster_y * raster_groesse)
         elif richtung == "links":
-            matte_pos = ((spieler_raster_x + 1) * RASTER_GROESSE, spieler_raster_y * RASTER_GROESSE)
+            matte_pos = ((spieler_raster_x + 1) * raster_groesse, spieler_raster_y * raster_groesse)
         elif richtung == "oben":
-            matte_pos = (spieler_raster_x * RASTER_GROESSE, (spieler_raster_y + 1) * RASTER_GROESSE)
+            matte_pos = (spieler_raster_x * raster_groesse, (spieler_raster_y + 1) * raster_groesse)
         elif richtung == "unten":
-            matte_pos = (spieler_raster_x * RASTER_GROESSE, (spieler_raster_y - 1) * RASTER_GROESSE)
+            matte_pos = (spieler_raster_x * raster_groesse, (spieler_raster_y - 1) * raster_groesse)
         else:
-            return
+            return  # Keine Matte platzieren, wenn keine Richtung angegeben ist
 
         if matte_pos not in matten and not kollision_mit_objekten(*matte_pos):
             matten.append(matte_pos)
@@ -358,7 +378,7 @@ def platziere_matte(x, y, richtung):
 # Funktion zum Aufsammeln einer Matte
 def sammle_matte(x, y):
     global verfuegbare_matten
-    matte_pos = (x // RASTER_GROESSE * RASTER_GROESSE, y // RASTER_GROESSE * RASTER_GROESSE)
+    matte_pos = (x // raster_groesse * raster_groesse, y // raster_groesse * raster_groesse)
     if matte_pos in matten:
         matten.remove(matte_pos)
         verfuegbare_matten += 1
@@ -377,13 +397,19 @@ def verliere_leben():
         gesammelte_plutonium += 1
         reset_timer_und_plutonium()
 
-# Funktion zum Zurücksetzen des Timers und Neupositionieren des Plutoniums
-def reset_timer_und_plutonium():
-    global timer, timer_aktiv, plutonium, plutonium_blink_start, gesammelte_plutonium
-    timer = aktuelles_level * 10
-    timer_aktiv = False
-    plutonium = generiere_position([z[:2] for z in zeit_elemente] + waende + [g[:2] for g in gegner] + [tonne])
-    plutonium_blink_start = time.time()
+# Funktion zum Entfernen einer Wand
+def entferne_wand(x, y):
+    global waende, verfuegbare_explosionen
+    wand_pos = (x // raster_groesse * raster_groesse, y // raster_groesse * raster_groesse)
+    if wand_pos in waende:
+        waende.remove(wand_pos)
+        verfuegbare_explosionen -= 1
+        explosion_sound.play()
+
+# Funktion zur Überprüfung der Kollision zwischen zwei Gegnern
+def gegner_kollision(g1, g2):
+    return kollision([g1[0], g1[1], raster_groesse, raster_groesse], 
+                     [g2[0], g2[1], raster_groesse, raster_groesse])
 
 # Hauptspielschleife
 laueft = True
@@ -400,6 +426,7 @@ while laueft:
             if ereignis.key == pygame.K_SPACE:
                 platziere_matte(spieler_x, spieler_y, spieler_richtung)
 
+    # Spielerbewegung und Mattenaufsammeln
     if spieler_x == spieler_ziel_x and spieler_y == spieler_ziel_y:
         sammle_matte(spieler_x, spieler_y)
         tasten = pygame.key.get_pressed()
@@ -407,20 +434,21 @@ while laueft:
         neue_richtung = None
 
         if tasten[pygame.K_LEFT] and spieler_x > 0:
-            neue_ziel_x -= RASTER_GROESSE
+            neue_ziel_x -= raster_groesse
             neue_richtung = "links"
-        elif tasten[pygame.K_RIGHT] and spieler_x < BREITE - RASTER_GROESSE:
-            neue_ziel_x += RASTER_GROESSE
+        elif tasten[pygame.K_RIGHT] and spieler_x < breite - raster_groesse:
+            neue_ziel_x += raster_groesse
             neue_richtung = "rechts"
         elif tasten[pygame.K_UP] and spieler_y > 0:
-            neue_ziel_y -= RASTER_GROESSE
+            neue_ziel_y -= raster_groesse
             neue_richtung = "oben"
-        elif tasten[pygame.K_DOWN] and spieler_y < HOEHE - RASTER_GROESSE:
-            neue_ziel_y += RASTER_GROESSE
+        elif tasten[pygame.K_DOWN] and spieler_y < hoehe - raster_groesse:
+            neue_ziel_y += raster_groesse
             neue_richtung = "unten"
 
-        if not any(kollision([neue_ziel_x, neue_ziel_y, RASTER_GROESSE, RASTER_GROESSE], [w[0], w[1], RASTER_GROESSE, RASTER_GROESSE]) for w in waende):
-            if neue_ziel_x != spieler_x or neue_ziel_y != spieler_y:
+        # Überprüfe Kollision mit Wänden
+        if not any(kollision([neue_ziel_x, neue_ziel_y, raster_groesse, raster_groesse], [w[0], w[1], raster_groesse, raster_groesse]) for w in waende):
+            if neue_ziel_x != spieler_x or neue_ziel_y != spieler_y:  # Nur wenn sich die Position ändert
                 spieler_ziel_x, spieler_ziel_y = neue_ziel_x, neue_ziel_y
                 spieler_richtung = neue_richtung
                 play_sound(move_sound)
@@ -435,36 +463,42 @@ while laueft:
         elif spieler_richtung == "unten":
             spieler_y = min(spieler_ziel_y, spieler_y + spieler_geschwindigkeit)
         
-        aktueller_rasterpunkt = (spieler_x // RASTER_GROESSE * RASTER_GROESSE, 
-                                 spieler_y // RASTER_GROESSE * RASTER_GROESSE)
+        # Überprüfe, ob der Spieler einen neuen Rasterpunkt erreicht hat
+        aktueller_rasterpunkt = (spieler_x // raster_groesse * raster_groesse, 
+                                 spieler_y // raster_groesse * raster_groesse)
         if aktueller_rasterpunkt != letzter_rasterpunkt:
             play_sound(move_sound)
             letzter_rasterpunkt = aktueller_rasterpunkt
 
+    # Kollisionsprüfung für Zeit-Elemente
     for zeit in zeit_elemente[:]:
-        if kollision([spieler_x, spieler_y, RASTER_GROESSE, RASTER_GROESSE], [zeit[0], zeit[1], RASTER_GROESSE, RASTER_GROESSE]):
+        if kollision([spieler_x, spieler_y, raster_groesse, raster_groesse], [zeit[0], zeit[1], raster_groesse, raster_groesse]):
             zeit_elemente.remove(zeit)
             punkte += 1
-            timer += 1
+            timer += 1  # Timer um 1 erhöhen
             play_sound(diamant_sound)
 
-    if kollision([spieler_x, spieler_y, RASTER_GROESSE, RASTER_GROESSE], [tonne[0], tonne[1], RASTER_GROESSE, RASTER_GROESSE]):
+    # Kollisionsprüfung für Tonne
+    if kollision([spieler_x, spieler_y, raster_groesse, raster_groesse], [tonne[0], tonne[1], raster_groesse, raster_groesse]):
         if timer_aktiv:
             punkte += 10
             gesammelte_plutonium += 1
             play_sound(tonne_sound)
             reset_timer_und_plutonium()
             if gesammelte_plutonium >= benoetigte_plutonium:
+                # Level abgeschlossen
                 aktuelles_level += 1
                 level_neustart()
                 play_sound(gamestart_sound)
 
-    if plutonium and kollision([spieler_x, spieler_y, RASTER_GROESSE, RASTER_GROESSE], [plutonium[0], plutonium[1], RASTER_GROESSE, RASTER_GROESSE]):
+    # Kollisionsprüfung für Plutonium
+    if plutonium and kollision([spieler_x, spieler_y, raster_groesse, raster_groesse], [plutonium[0], plutonium[1], raster_groesse, raster_groesse]):
         plutonium = None
         timer_aktiv = True
         letzter_timer_update = time.time()
         play_sound(plutonium_sound)
 
+    # Timer-Logik
     if timer_aktiv:
         aktueller_zeit = time.time()
         if aktueller_zeit - letzter_timer_update >= 1:
@@ -472,74 +506,94 @@ while laueft:
             letzter_timer_update = aktueller_zeit
             play_sound(timer_sound)
             if timer <= 0:
-                play_sound(drama_sound)
-                if gesammelte_plutonium >= benoetigte_plutonium - 1:
-                    aktuelles_level += 1
-                    level_neustart()
-                    play_sound(gamestart_sound)
-                else:
-                    verliere_leben()
-                    if leben <= 0:
-                        zeige_game_over()
-                        if laueft:
-                            level_neustart()
+                play_sound(drama_sound)  # Spiele den Drama-Sound ab
+                verliere_leben()
+                if leben <= 0:
+                    zeige_game_over()
+                    play_sound(gameover_sound)
+                    laueft = False
 
+    # Spielerbewegung und Wandentfernung
     tasten = pygame.key.get_pressed()
     neue_richtung = None
 
     if tasten[pygame.K_LEFT] and spieler_x > 0:
         neue_richtung = "links"
-    elif tasten[pygame.K_RIGHT] and spieler_x < BREITE - RASTER_GROESSE:
+    elif tasten[pygame.K_RIGHT] and spieler_x < breite - raster_groesse:
         neue_richtung = "rechts"
     elif tasten[pygame.K_UP] and spieler_y > 0:
         neue_richtung = "oben"
-    elif tasten[pygame.K_DOWN] and spieler_y < HOEHE - RASTER_GROESSE:
+    elif tasten[pygame.K_DOWN] and spieler_y < hoehe - raster_groesse:
         neue_richtung = "unten"
 
+    # Überprüfe, ob der Spieler vor einer Wand steht
     wand_vor_spieler = False
     if neue_richtung:
         if neue_richtung == "links":
-            naechste_pos = (spieler_x - RASTER_GROESSE, spieler_y)
+            naechste_pos = (spieler_x - raster_groesse, spieler_y)
         elif neue_richtung == "rechts":
-            naechste_pos = (spieler_x + RASTER_GROESSE, spieler_y)
+            naechste_pos = (spieler_x + raster_groesse, spieler_y)
         elif neue_richtung == "oben":
-            naechste_pos = (spieler_x, spieler_y - RASTER_GROESSE)
+            naechste_pos = (spieler_x, spieler_y - raster_groesse)
         elif neue_richtung == "unten":
-            naechste_pos = (spieler_x, spieler_y + RASTER_GROESSE)
+            naechste_pos = (spieler_x, spieler_y + raster_groesse)
         
         wand_vor_spieler = naechste_pos in waende
 
+    # Explosion-Logik
     if wand_vor_spieler and verfuegbare_explosionen > 0:
-        entferne_wand(*naechste_pos)
-        verfuegbare_explosionen -= 1
+        if explosion_start_zeit is None:
+            explosion_start_zeit = time.time()
+            explosion_richtung = neue_richtung
+        elif neue_richtung == explosion_richtung and time.time() - explosion_start_zeit >= 1:
+            entferne_wand(*naechste_pos)
+            explosion_start_zeit = None
+            explosion_richtung = None
+    else:
+        explosion_start_zeit = None
+        explosion_richtung = None
 
-    for g in gegner:
-        if (g[0], g[1]) == (g[4], g[5]):
-            versuche = 0
-            while versuche < 4:
-                if versuche == 0:
-                    neue_richtung = g[2]
-                else:
-                    neue_richtung = naechste_zufaellige_richtung()
+    # Gegnerbewegung
+    for i, g in enumerate(gegner):
+        if (g[0], g[1]) == (g[4], g[5]):  # Wenn der Gegner einen Rasterpunkt erreicht hat
+            # Berechne den nächsten Rasterpunkt in der aktuellen Richtung
+            if g[2] == "rechts":
+                naechster_x, naechster_y = g[0] + raster_groesse, g[1]
+            elif g[2] == "links":
+                naechster_x, naechster_y = g[0] - raster_groesse, g[1]
+            elif g[2] == "unten":
+                naechster_x, naechster_y = g[0], g[1] + raster_groesse
+            else:  # oben
+                naechster_x, naechster_y = g[0], g[1] - raster_groesse
+
+            # Überprüfe, ob der nächste Rasterpunkt frei ist
+            if not kollision_mit_objekten(naechster_x, naechster_y):
+                g[4], g[5] = naechster_x, naechster_y  # Setze neues Ziel
+            else:
+                # Wenn der Weg blockiert ist, wähle eine neue zufällige Richtung
+                moegliche_richtungen = ["rechts", "links", "oben", "unten"]
+                moegliche_richtungen.remove(g[2])  # Entferne die aktuelle Richtung
+                random.shuffle(moegliche_richtungen)
                 
-                if neue_richtung == "rechts":
-                    naechster_x, naechster_y = g[0] + RASTER_GROESSE, g[1]
-                elif neue_richtung == "links":
-                    naechster_x, naechster_y = g[0] - RASTER_GROESSE, g[1]
-                elif neue_richtung == "unten":
-                    naechster_x, naechster_y = g[0], g[1] + RASTER_GROESSE
+                for neue_richtung in moegliche_richtungen:
+                    if neue_richtung == "rechts":
+                        naechster_x, naechster_y = g[0] + raster_groesse, g[1]
+                    elif neue_richtung == "links":
+                        naechster_x, naechster_y = g[0] - raster_groesse, g[1]
+                    elif neue_richtung == "unten":
+                        naechster_x, naechster_y = g[0], g[1] + raster_groesse
+                    else:  # oben
+                        naechster_x, naechster_y = g[0], g[1] - raster_groesse
+
+                    if not kollision_mit_objekten(naechster_x, naechster_y):
+                        g[2] = neue_richtung  # Setze neue Richtung
+                        g[4], g[5] = naechster_x, naechster_y  # Setze neues Ziel
+                        break
                 else:
-                    naechster_x, naechster_y = g[0], g[1] - RASTER_GROESSE
+                    # Wenn keine freie Richtung gefunden wurde, bleibe stehen
+                    g[4], g[5] = g[0], g[1]
 
-                if not kollision_mit_objekten(naechster_x, naechster_y):
-                    g[2] = neue_richtung
-                    g[4], g[5] = naechster_x, naechster_y
-                    break
-                versuche += 1
-
-            if versuche == 4:
-                g[4], g[5] = g[0], g[1]
-
+        # Bewege den Gegner schrittweise zum Zielpunkt
         if g[0] < g[4]:
             g[0] = min(g[0] + g[3], g[4])
         elif g[0] > g[4]:
@@ -549,7 +603,40 @@ while laueft:
         elif g[1] > g[5]:
             g[1] = max(g[1] - g[3], g[5])
         
-        if kollision([spieler_x, spieler_y, RASTER_GROESSE, RASTER_GROESSE], [g[0], g[1], RASTER_GROESSE, RASTER_GROESSE]):
+        # Überprüfe Kollisionen mit anderen Gegnern
+        for j, other_g in enumerate(gegner):
+            if i != j and gegner_kollision(g, other_g):
+                # Kollision gefunden, kehre die Richtung beider Gegner um
+                g[2] = umkehrrichtung(g[2])
+                other_g[2] = umkehrrichtung(other_g[2])
+                
+                # Setze neue Ziele für beide Gegner basierend auf der umgekehrten Richtung
+                if g[2] == "rechts":
+                    g[4], g[5] = g[0] + raster_groesse, g[1]
+                elif g[2] == "links":
+                    g[4], g[5] = g[0] - raster_groesse, g[1]
+                elif g[2] == "unten":
+                    g[4], g[5] = g[0], g[1] + raster_groesse
+                else:  # oben
+                    g[4], g[5] = g[0], g[1] - raster_groesse
+
+                if other_g[2] == "rechts":
+                    other_g[4], other_g[5] = other_g[0] + raster_groesse, other_g[1]
+                elif other_g[2] == "links":
+                    other_g[4], other_g[5] = other_g[0] - raster_groesse, other_g[1]
+                elif other_g[2] == "unten":
+                    other_g[4], other_g[5] = other_g[0], other_g[1] + raster_groesse
+                else:  # oben
+                    other_g[4], other_g[5] = other_g[0], other_g[1] - raster_groesse
+                
+                # Spiele den Kollisionssound ab
+                if 'collision_sound' in globals():
+                    play_sound(collision_sound)
+                else:
+                    play_sound(move_sound)
+        
+        # Kollision mit Spieler
+        if kollision([spieler_x, spieler_y, raster_groesse, raster_groesse], [g[0], g[1], raster_groesse, raster_groesse]):
             verliere_leben()
             if leben <= 0:
                 zeige_game_over()
@@ -557,17 +644,80 @@ while laueft:
                 laueft = False
                 break
 
+    # Prüfen, ob das Spiel vorbei ist (außerhalb der Gegnerschleife)
     if leben <= 0:
         break
 
+    # Bildschirm leeren
     bildschirm.fill(SCHWARZ)
-    zeichne_spielelemente()
 
+    # Zeichne die sichere Position
+    if sichere_position:
+        bildschirm.blit(save_bild, (sichere_position[0], sichere_position[1]))
+
+    # Wände zeichnen
+    for wand in waende:
+        bildschirm.blit(wand_bild, (wand[0], wand[1]))
+
+    # Zeit-Elemente zeichnen
+    for zeit in zeit_elemente:
+        bildschirm.blit(zeit_bild, (zeit[0], zeit[1]))
+
+    # Gegner zeichnen mit Farbanimation
+    for i, g in enumerate(gegner):
+        farbe = get_regenbogen_farbe(farb_offset + i * 0.1)  # Unterschiedliche Farben für jeden Gegner
+        pygame.draw.rect(bildschirm, farbe, (g[0], g[1], raster_groesse, raster_groesse))
+    
+    # Farboffset aktualisieren
+    farb_offset += farb_geschwindigkeit
+    if farb_offset > 1:
+        farb_offset -= 1
+
+    # Plutonium zeichnen (blinkend, wenn neu gesetzt)
+    if plutonium:
+        if plutonium_blink_start and time.time() - plutonium_blink_start < 2:
+            if int(time.time() * 4) % 2 == 0:  # Blinken mit 4 Hz
+                bildschirm.blit(plutonium_bild, (plutonium[0], plutonium[1]))
+        else:
+            bildschirm.blit(plutonium_bild, (plutonium[0], plutonium[1]))
+            plutonium_blink_start = None
+
+    # Tonne zeichnen
+    bildschirm.blit(tonne_bild, (tonne[0], tonne[1]))
+
+    # Matten zeichnen
+    for matte in matten:
+        bildschirm.blit(matte_bild, (matte[0], matte[1]))
+
+    # Spieler zuletzt zeichnen, damit er über allen anderen Elementen erscheint
+    bildschirm.blit(spieler_bild, (spieler_x, spieler_y))
+
+    # Informationen anzeigen mit 30% Transparenz
+    schrift = pygame.font.Font(None, 14)
+    info_texte = [
+        f"Level: {aktuelles_level}",
+        f"Plutonium: {gesammelte_plutonium}/{benoetigte_plutonium}",
+        f"Punkte: {punkte}",
+        f"Timer: {timer}",
+        f"Leben: {leben}",
+        f"Matten: {verfuegbare_matten}",
+        f"Explosions: {verfuegbare_explosionen}"
+    ]
+    for i, text in enumerate(info_texte):
+        info_surface = schrift.render(text, True, WEISS)
+        info_surface.set_alpha(int(255 * 0.9))  # 50% Transparenz
+        bildschirm.blit(info_surface, (10, 10 + i * 18))
+
+    # Anzeige aktualisieren
     pygame.display.flip()
+
+    # Framerate begrenzen
     uhr.tick(60)
 
+# Zeige Cover am Ende des Spiels
 zeige_cover()
 
+# Nach dem Spielende
 if leben <= 0:
     zeige_game_over()
 
